@@ -1,36 +1,22 @@
-def format_timestamp(seconds: float) -> str:
-    """
-    Converts seconds to SRT timestamp format: HH:MM:SS,mmm
+def write_srt(segments, original_audio_path, output_folder="output"):
+    import os
+    os.makedirs(output_folder, exist_ok=True)
 
-    Args:
-        seconds (float): Time in seconds.
+    base_name = os.path.splitext(os.path.basename(original_audio_path))[0]
+    srt_path = os.path.join(output_folder, f"{base_name}.srt")
 
-    Returns:
-        str: Formatted timestamp.
-    """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int((seconds - int(seconds)) * 1000)
-    return f"{hours:02}:{minutes:02}:{secs:02},{millis:03}"
+    def format_timestamp(seconds):
+        hrs, rem = divmod(int(seconds), 3600)
+        mins, secs = divmod(rem, 60)
+        millis = int((seconds - int(seconds)) * 1000)
+        return f"{hrs:02}:{mins:02}:{secs:02},{millis:03}"
 
-
-def write_srt(segments: list, output_path: str):
-    """
-    Writes a list of transcription segments to a .srt file.
-
-    Args:
-        segments (list): List of dicts with 'start', 'end', 'text'.
-        output_path (str): Path to save the .srt file.
-    """
-    with open(output_path, "w", encoding="utf-8") as f:
-        for index, segment in enumerate(segments, start=1):
-            start_time = format_timestamp(segment["start"])
-            end_time = format_timestamp(segment["end"])
+    with open(srt_path, "w", encoding="utf-8") as srt_file:
+        for i, segment in enumerate(segments, start=1):
+            start = format_timestamp(segment["start"])
+            end = format_timestamp(segment["end"])
             text = segment["text"].strip()
+            srt_file.write(f"{i}\n{start} --> {end}\n{text}\n\n")
 
-            f.write(f"{index}\n")
-            f.write(f"{start_time} --> {end_time}\n")
-            f.write(f"{text}\n\n")
-
-    print(f"[INFO] SRT file saved to: {output_path}")
+    print(f"[INFO] SRT file saved to: {srt_path}")
+    return srt_path  # ✅ ESTA LINHA É ESSENCIAL!

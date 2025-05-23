@@ -1,24 +1,26 @@
 import os
+import shutil
+import time
 from pydub import AudioSegment
 
-def convert_to_wav(input_path: str, output_dir: str = "audio") -> str:
-    """
-    Converts an input audio file to WAV format using pydub.
+def convert_to_wav(input_path, output_folder="audio"):
+    ext = os.path.splitext(input_path)[1].lower()
     
-    Args:
-        input_path (str): Path to the input audio file.
-        output_dir (str): Directory to save the converted .wav file.
-    
-    Returns:
-        str: Path to the output .wav file.
-    """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    # Garante que a pasta existe
+    os.makedirs(output_folder, exist_ok=True)
 
-    filename = os.path.splitext(os.path.basename(input_path))[0]
-    output_path = os.path.join(output_dir, f"{filename}.wav")
+    # Timestamp para evitar sobrescrever
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    base_name = os.path.splitext(os.path.basename(input_path))[0]
+    output_path = os.path.join(output_folder, f"{base_name}_{timestamp}.wav")
 
+    # Se já for .wav, apenas copia
+    if ext == ".wav":
+        shutil.copy(input_path, output_path)
+        print(f"[INFO] Copied WAV file to: {output_path}")
+        return output_path
+
+    print(f"[INFO] Converting '{input_path}' to WAV at '{output_path}'")
     audio = AudioSegment.from_file(input_path)
     audio.export(output_path, format="wav")
-    print(f"[INFO] Converted '{input_path}' to WAV at '{output_path}'")
     return output_path

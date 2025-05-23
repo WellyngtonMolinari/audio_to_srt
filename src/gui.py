@@ -1,63 +1,86 @@
-import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
+from tkinter import ttk
+import threading
 
 from converter import convert_to_wav
-from transcriber import load_model, transcribe_audio
+from transcriber import load_model, transcribe_audio_with_progress
 from srt_writer import write_srt
 
 class AudioToSRTApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Audio to SRT Converter")
-        self.root.geometry("400x200")
+        self.root.geometry("400x300")
+        self.root.resizable(False, False)
 
-        self.model_size = "base"
-        self.input_file = ""
+        # Model selection
+        tk.Label(root, text="Choose Whisper model:").pack(pady=5)
+        self.model_var = tk.StringVar(value="base")
+        model_menu = tk.OptionMenu(root, self.model_var, "tiny", "base", "small", "medium", "large")
+        model_menu.pack()
 
-        self.build_interface()
+        # Select audio file
+        self.select_button = tk.Button(root, text="Select Audio File", command=self.select_file)
+        self.select_button.pack(pady=10)
 
-    def build_interface(self):
-        self.label = tk.Label(self.root, text="Select an audio file:")
-        self.label.pack(pady=10)
+        # Progress bar
+        self.progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
+        self.progress.pack(pady=10)
 
-        self.select_button = tk.Button(self.root, text="Browse", command=self.browse_file)
-        self.select_button.pack()
+        # Status label
+        self.status_label = tk.Label(root, text="Awaiting file selection...", fg="blue")
+        self.status_label.pack(pady=5)
 
-        self.convert_button = tk.Button(self.root, text="Convert to SRT", command=self.process_file, state=tk.DISABLED)
-        self.convert_button.pack(pady=20)
+    def select_file(self):
+        file_path = filedialog.askopenfilename(filetypes=[
+            ("Audio Files", "*.mp3 *.wav *.m4a *.flac *.ogg"),
+            ("All files", "*.*")
+        ])
+        if file_path:
+            threading.Thread(target=self.process_audio, args=(file_path,), daemon=True).start()
 
-    def browse_file(self):
-        filetypes = [("Audio files", "*.mp3 *.wav *.mp4"), ("All files", "*.*")]
-        file = filedialog.askopenfilename(title="Select Audio File", filetypes=filetypes)
-        if file:
-            self.input_file = file
-            self.convert_button.config(state=tk.NORMAL)
-            self.label.config(text=f"Selected: {os.path.basename(file)}")
+    def update_status(self, message, color="black"):
+        self.status_label.config(text=message, fg=color)
+        self.root.update_idletasks()
 
-    def process_file(self):
+    def update_progress(self, current, total):
+        self.progress["maximum"] = total
+        self.progress["value"] = current
+        percent = int((current / total) * 100)
+        self.update_status(f"Transcribing... {percent}%", color="black")
+
+    def process_audio(self, file_path):
         try:
-            wav_path = convert_to_wav(self.input_file)
-            model = load_model(self.model_size)
-            segments = transcribe_audio(model, wav_path)
+            self.update_status("Converting to WAV (if needed)...")
+            self.progress["value"] = 0
+            wav_path = convert_to_wav(file_path)
 
-            output_dir = "output"
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+            self.update_status("Loading Whisper model...")
+            model = load_model(self.model_var.get())
 
-            filename = os.path.splitext(os.path.basename(self.input_file))[0]
-            srt_path = os.path.join(output_dir, f"{filename}.srt")
-            write_srt(segments, srt_path)
+            self.update_status("Transcribing audio...")
+            result = transcribe_audio_with_progress(model, wav_path, progress_callback=self.update_progress)
 
-            messagebox.showinfo("Success", f"SRT file created: {srt_path}")
+            # Limita legendas a 4 segundos por trecho
+            from transcriber import split_long_segments
+            result["segments"] = split_long_segments(result["segments"], max_duration=4.0)
+
+            detected_lang = result.get("language", "unknown")
+            self.update_status(f"Transcription complete. Language: {detected_lang}", color="green")
+
+            self.update_status("Writing SRT file...")
+            srt_path = write_srt(result["segments"], wav_path)
+
+            self.update_status(f"SRT saved at: {srt_path}", color="green")
+            messagebox.showinfo("Success", f"Transcription completed!\n\nSRT saved at:\n{srt_path}")
 
         except Exception as e:
+            self.update_status("Error during transcription", color="red")
             messagebox.showerror("Error", str(e))
+    
 
-def run_gui():
+if __name__ == "__main__":
     root = tk.Tk()
     app = AudioToSRTApp(root)
     root.mainloop()
-
-if __name__ == "__main__":
-    run_gui()
